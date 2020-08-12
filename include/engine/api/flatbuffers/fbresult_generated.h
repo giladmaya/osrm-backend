@@ -1241,6 +1241,8 @@ struct LegT : public flatbuffers::NativeTable {
   std::string summary;
   std::unique_ptr<osrm::engine::api::fbresult::AnnotationT> annotations;
   std::vector<std::unique_ptr<osrm::engine::api::fbresult::StepT>> steps;
+  std::string polyline;
+  std::vector<osrm::engine::api::fbresult::Position> coordinates;
   LegT()
       : distance(0.0),
         duration(0.0),
@@ -1256,7 +1258,9 @@ struct Leg FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_WEIGHT = 8,
     VT_SUMMARY = 10,
     VT_ANNOTATIONS = 12,
-    VT_STEPS = 14
+    VT_STEPS = 14,
+    VT_POLYLINE = 16,
+    VT_COORDINATES = 18
   };
   double distance() const {
     return GetField<double>(VT_DISTANCE, 0.0);
@@ -1276,6 +1280,12 @@ struct Leg FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<flatbuffers::Offset<osrm::engine::api::fbresult::Step>> *steps() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<osrm::engine::api::fbresult::Step>> *>(VT_STEPS);
   }
+  const flatbuffers::String *polyline() const {
+    return GetPointer<const flatbuffers::String *>(VT_POLYLINE);
+  }
+  const flatbuffers::Vector<const osrm::engine::api::fbresult::Position *> *coordinates() const {
+    return GetPointer<const flatbuffers::Vector<const osrm::engine::api::fbresult::Position *> *>(VT_COORDINATES);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<double>(verifier, VT_DISTANCE) &&
@@ -1288,6 +1298,10 @@ struct Leg FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyOffset(verifier, VT_STEPS) &&
            verifier.VerifyVector(steps()) &&
            verifier.VerifyVectorOfTables(steps()) &&
+           VerifyOffset(verifier, VT_POLYLINE) &&
+           verifier.VerifyString(polyline()) &&
+           VerifyOffset(verifier, VT_COORDINATES) &&
+           verifier.VerifyVector(coordinates()) &&
            verifier.EndTable();
   }
   LegT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -1316,6 +1330,12 @@ struct LegBuilder {
   void add_steps(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<osrm::engine::api::fbresult::Step>>> steps) {
     fbb_.AddOffset(Leg::VT_STEPS, steps);
   }
+  void add_polyline(flatbuffers::Offset<flatbuffers::String> polyline) {
+    fbb_.AddOffset(Leg::VT_POLYLINE, polyline);
+  }
+  void add_coordinates(flatbuffers::Offset<flatbuffers::Vector<const osrm::engine::api::fbresult::Position *>> coordinates) {
+    fbb_.AddOffset(Leg::VT_COORDINATES, coordinates);
+  }
   explicit LegBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1333,6 +1353,8 @@ inline flatbuffers::Offset<Leg> CreateLeg(
     double distance = 0.0,
     double duration = 0.0,
     double weight = 0.0,
+    flatbuffers::Offset<flatbuffers::String> polyline = 0,
+    flatbuffers::Offset<flatbuffers::Vector<const osrm::engine::api::fbresult::Position *>> coordinates = 0,
     flatbuffers::Offset<flatbuffers::String> summary = 0,
     flatbuffers::Offset<osrm::engine::api::fbresult::Annotation> annotations = 0,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<osrm::engine::api::fbresult::Step>>> steps = 0) {
@@ -1343,6 +1365,8 @@ inline flatbuffers::Offset<Leg> CreateLeg(
   builder_.add_steps(steps);
   builder_.add_annotations(annotations);
   builder_.add_summary(summary);
+  builder_.add_polyline(polyline);
+  builder_.add_coordinates(coordinates);
   return builder_.Finish();
 }
 
@@ -1352,15 +1376,21 @@ inline flatbuffers::Offset<Leg> CreateLegDirect(
     double duration = 0.0,
     double weight = 0.0,
     const char *summary = nullptr,
+    const char *polyline = nullptr,
+    const std::vector<osrm::engine::api::fbresult::Position> *coordinates = nullptr,
     flatbuffers::Offset<osrm::engine::api::fbresult::Annotation> annotations = 0,
     const std::vector<flatbuffers::Offset<osrm::engine::api::fbresult::Step>> *steps = nullptr) {
   auto summary__ = summary ? _fbb.CreateString(summary) : 0;
   auto steps__ = steps ? _fbb.CreateVector<flatbuffers::Offset<osrm::engine::api::fbresult::Step>>(*steps) : 0;
+  auto polyline__ = polyline ? _fbb.CreateString(polyline) : 0;
+  auto coordinates__ = coordinates ? _fbb.CreateVectorOfStructs<osrm::engine::api::fbresult::Position>(*coordinates) : 0;
   return osrm::engine::api::fbresult::CreateLeg(
       _fbb,
       distance,
       duration,
       weight,
+      polyline__,
+      coordinates__,
       summary__,
       annotations,
       steps__);
@@ -1993,7 +2023,7 @@ inline flatbuffers::Offset<Annotation> CreateAnnotation(flatbuffers::FlatBufferB
   auto _nodes = _o->nodes.size() ? _fbb.CreateVector(_o->nodes) : 0;
   auto _weight = _o->weight.size() ? _fbb.CreateVector(_o->weight) : 0;
   auto _speed = _o->speed.size() ? _fbb.CreateVector(_o->speed) : 0;
-  auto _metadata = _o->metadata ? CreateMetadata(_fbb, _o->metadata.get(), _rehasher) : 0;
+  auto _metadata = _o->metadata ? CreateMetadata(_fbb, _o->metadata.get(), _rehasher) : 0;	
   return osrm::engine::api::fbresult::CreateAnnotation(
       _fbb,
       _distance,
@@ -2221,11 +2251,16 @@ inline flatbuffers::Offset<Leg> CreateLeg(flatbuffers::FlatBufferBuilder &_fbb, 
   auto _summary = _o->summary.empty() ? 0 : _fbb.CreateString(_o->summary);
   auto _annotations = _o->annotations ? CreateAnnotation(_fbb, _o->annotations.get(), _rehasher) : 0;
   auto _steps = _o->steps.size() ? _fbb.CreateVector<flatbuffers::Offset<osrm::engine::api::fbresult::Step>> (_o->steps.size(), [](size_t i, _VectorArgs *__va) { return CreateStep(*__va->__fbb, __va->__o->steps[i].get(), __va->__rehasher); }, &_va ) : 0;
+  auto _polyline = _o->polyline.empty() ? 0 : _fbb.CreateString(_o->polyline);
+  auto _coordinates = _o->coordinates.size() ? _fbb.CreateVectorOfStructs(_o->coordinates) : 0;
+
   return osrm::engine::api::fbresult::CreateLeg(
       _fbb,
       _distance,
       _duration,
       _weight,
+      _polyline,
+      _coordinates,
       _summary,
       _annotations,
       _steps);

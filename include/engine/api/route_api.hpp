@@ -386,6 +386,16 @@ class RouteAPI : public BaseAPI
                 summary_string = fb_result.CreateString(leg.summary);
             }
 
+            auto overview = MakeOverview(std::vector<guidance::LegGeometry>(
+                leg_geometries.begin() + idx, leg_geometries.begin() + idx + 1));
+            mapbox::util::variant<flatbuffers::Offset<flatbuffers::String>,
+                                flatbuffers::Offset<flatbuffers::Vector<const fbresult::Position *>>>
+                geometry;
+            if (overview)
+            {
+                geometry = MakeGeometry(fb_result, overview->begin(), overview->end());
+            }
+
             fbresult::LegBuilder legBuilder(fb_result);
             legBuilder.add_distance(leg.distance);
             legBuilder.add_duration(leg.duration);
@@ -400,6 +410,13 @@ class RouteAPI : public BaseAPI
             {
                 legBuilder.add_annotations(annotation_buffer);
             }
+
+            if (overview)
+            {
+                mapbox::util::apply_visitor(GeometryVisitor<fbresult::LegBuilder>(legBuilder),
+                                            geometry);
+            }
+
             routeLegs.emplace_back(legBuilder.Finish());
         }
         auto legs_vector = fb_result.CreateVector(routeLegs);
@@ -522,6 +539,7 @@ class RouteAPI : public BaseAPI
             }
             metadata_buffer = fbresult::CreateMetadataDirect(fb_result, &names);
         }
+
         fbresult::AnnotationBuilder annotation(fb_result);
         annotation.add_speed(speed);
         annotation.add_duration(duration);
